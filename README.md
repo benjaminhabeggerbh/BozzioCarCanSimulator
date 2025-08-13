@@ -1,0 +1,2 @@
+
+Hardware and switches see DocumentationSecondariesGuiTablet.pdf

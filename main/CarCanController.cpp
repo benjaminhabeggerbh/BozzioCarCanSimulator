@@ -1,0 +1,146 @@
+#include <map>
+#include <cstdint>
+#include <cstring>
+#include "lvgl.h"
+#include "driver/twai.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "CarCanController.h"
+#include "common.h"
+
+#define TAG "CarCan"
+
+void twai_task(void *pvParameter);
+void twai_receive_task(void *pvParameter);
+void send_can_message(uint32_t message_id, uint8_t* data, uint8_t dlc);
+
+CarCanController::CarCanController() : current_vehicle(VW_T7), current_speed_kmh(0), current_gear(Gear::PARK) {
+    button_map = {
+        { VW_T5,             {"VW T5"} },        
+        { VW_T6,             {"VW T6"} },
+        { VW_T61,            {"VW T6.1"} },
+        { VW_T7,             {"VW T7"} },                
+        { MB_SPRINTER,       {"M Sprinter"} },        
+        { MB_SPRINTER_2023,  {"Mercedes Sprinter 2023"} },
+        { JEEP_RENEGADE,     {"Jeep Renegade"} },                
+        { JEEP_RENEGADE_MHEV,{"Jeep Renegade MHEV"} },
+        { MB_VIANO,          {"Mercedes Viano"} }
+    };
+}
+
+void CarCanController::startCan(){
+    xTaskCreate(twai_task, "twai_task", 4096, this, 5, NULL);
+    xTaskCreate(twai_receive_task, "TWAI_Receive", 4096, NULL, 5, NULL);    
+}
+
+void CarCanController::btnCallback(button_id_t button){
+    ESP_LOGI(TAG, "Button callback %u ", button);
+    setCurrentVehicle(button);
+}
+
+void CarCanController::setCurrentVehicle(button_id_t vehicle) {
+    if (button_map.find(vehicle) != button_map.end()) {
+        current_vehicle = vehicle;
+        ESP_LOGI(TAG, "Selected vehicle: %s", button_map[vehicle].label);
+    }
+}
+
+void CarCanController::setSpeed(uint8_t speed_kmh) {
+    if (speed_kmh <= 250) {
+        current_speed_kmh = speed_kmh;
+        ESP_LOGI(TAG, "Speed set to: %d km/h", speed_kmh);
+    }
+}
+
+void CarCanController::setGear(Gear gear) {
+    current_gear = gear;
+    const char* gear_names[] = {"PARK", "REVERSE", "NEUTRAL", "DRIVE"};
+    ESP_LOGI(TAG, "Gear set to: %s", gear_names[static_cast<int>(gear)]);
+}
+
+ButtonMap CarCanController::getButtonMap(){
+    return button_map;
+}
+
+void CarCanController::sendPeriodicMessages() {
+    if (!hasMessageGenerator()) return;
+
+    uint8_t data[8];
+    uint8_t dlc;
+
+    // Send speed message
+    message_generator.generateSpeedMessage(current_vehicle, current_speed_kmh, data, dlc);
+    auto ids = message_generator.getRequiredMessageIds(current_vehicle);
+    if (ids.size() > 1) {
+        send_can_message(ids[1], data, dlc);  // Speed message ID
+    }
+
+    // Send gear message
+    message_generator.generateGearMessage(current_vehicle, current_gear, data, dlc);
+    if (!ids.empty()) {
+        send_can_message(ids[0], data, dlc);  // Gear message ID
+    }
+}
+
+void send_can_message(uint32_t message_id, uint8_t* data, uint8_t dlc)
+{
+    twai_message_t message;
+    message.flags = TWAI_MSG_FLAG_NONE;
+    message.identifier = message_id;
+    message.data_length_code = dlc;
+    memcpy(message.data, data, dlc);
+
+    if (twai_transmit(&message, pdMS_TO_TICKS(1000)) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to send CAN message!");
+    }
+}
+
+void twai_task(void *pvParameter) {
+    CarCanController* controller = static_cast<CarCanController*>(pvParameter);
+    
+    // Configure TWAI with baudrate from current vehicle
+    uint32_t baudrate = controller->hasMessageGenerator() ? 
+        controller->message_generator.getCANBaudRate(controller->getCurrentVehicle()) : 500000;
+    
+    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_20, GPIO_NUM_19, TWAI_MODE_NORMAL);
+    twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();  // TODO: Use baudrate parameter
+    twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
+    if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK) {
+        ESP_LOGI(TAG, "TWAI driver installed");
+    } else {
+        ESP_LOGE(TAG, "Failed to install TWAI driver");
+        vTaskDelete(NULL);
+    }
+
+    if (twai_start() == ESP_OK) {
+        ESP_LOGI(TAG, "TWAI driver started");
+    } else {
+        ESP_LOGE(TAG, "Failed to start TWAI driver");
+        twai_driver_uninstall();
+        vTaskDelete(NULL);
+    }
+
+    while (1) {
+        if (controller && controller->hasMessageGenerator()) {
+            controller->sendPeriodicMessages();
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
+    twai_stop();
+    twai_driver_uninstall();
+    vTaskDelete(NULL);
+}
+
+void twai_receive_task(void *pvParameter) {
+    twai_message_t message;
+    while (1) {
+        if (twai_receive(&message, pdMS_TO_TICKS(1000)) == ESP_OK) {
+            // Message received, but we don't need to process it
+        } else {
+            ESP_LOGW(TAG, "No message received within timeout.");
+        }
+    }
+} 
