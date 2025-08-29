@@ -60,7 +60,7 @@
 #define EXAMPLE_LCD_BK_LIGHT_OFF_LEVEL  !EXAMPLE_LCD_BK_LIGHT_ON_LEVEL
 
 
-static const char *TAG = "example";
+
 
 bool example_lvgl_lock(int timeout_ms);
 void example_lvgl_unlock(void);

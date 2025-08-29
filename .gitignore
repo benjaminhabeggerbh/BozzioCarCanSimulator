@@ -1,0 +1,61 @@
+# ESP-IDF build system
+build/
+dependencies.lock
+
+# ESP-IDF managed components (downloaded automatically)
+managed_components/
+
+# ESP-IDF configuration files that shouldn't be tracked
+sdkconfig.old
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Flash and monitor files
+.flash_args
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Node modules (if any)
+node_modules/
+
+# Binary files
+*.bin
+*.elf
+*.o
+*.a
+*.obj
+
+# Documentation build
+docs/_build/
+
+# Test results
+test_results/
+
+# Coverage reports
+.coverage
+htmlcov/
+
+# Backup files
+*.bak
+*.backup
+
+# ESP-IDF specific
+components/*/build/
+components/*/dist/

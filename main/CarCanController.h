@@ -5,7 +5,8 @@
 #include <cstdint>
 #include <memory>
 #include "common.h"
-#include "CarCanMessageGenerator.h"
+#include "BaseMessageGenerator.h"
+#include "MessageGeneratorFactory.h"
 
 
 
@@ -27,9 +28,9 @@ public:
     Gear getGear() const { return current_gear; }
 
     // Message generation
-    bool hasMessageGenerator() const { return message_generator.hasSupport(current_vehicle); }
+    bool hasMessageGenerator() const;
     void sendPeriodicMessages();
-    CarCanMessageGenerator message_generator;
+    std::shared_ptr<BaseMessageGenerator> getCurrentMessageGenerator() const;
     
 private:
     ButtonMap button_map;

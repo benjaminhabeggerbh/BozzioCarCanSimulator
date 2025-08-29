@@ -1,29 +1,29 @@
-#include "VWT7MessageGenerator.h"
+#include "VWT6MessageGenerator.h"
 #include "esp_log.h"
 #include <cstring>
 
-#define TAG "VWT7Gen"
+#define TAG "VWT6Gen"
 
-void VWT7MessageGenerator::generateSpeedMessage(uint8_t speed_kmh, uint8_t* data, uint8_t& dlc) {
-    dlc = 8;  // VW T7 uses 8-byte messages
+void VWT6MessageGenerator::generateSpeedMessage(uint8_t speed_kmh, uint8_t* data, uint8_t& dlc) {
+    dlc = 8;  // VW T6 uses 8-byte messages
     clearDataBuffer(data, dlc);  // Initialize all bytes to 0
     
     // Convert speed using the factor (0.01)
     uint16_t speed_value = static_cast<uint16_t>(speed_kmh / SPEED_FACTOR);
     
-    // Pack speed value into the message (VW T7 format - bytes 4-5)
+    // Pack speed value into the message (VW T6 format - same as T7)
     data[4] = speed_value & 0xFF;
     data[5] = (speed_value >> 8) & 0xFF;
     
-    ESP_LOGI(TAG, "Generated VW T7 speed message (%d km/h): %02X %02X %02X %02X %02X %02X %02X %02X", 
+    ESP_LOGI(TAG, "Generated VW T6 speed message (%d km/h): %02X %02X %02X %02X %02X %02X %02X %02X", 
              speed_kmh, data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
 }
 
-void VWT7MessageGenerator::generateGearMessage(Gear gear, uint8_t* data, uint8_t& dlc) {
-    dlc = 8;  // VW T7 uses 8-byte messages
+void VWT6MessageGenerator::generateGearMessage(Gear gear, uint8_t* data, uint8_t& dlc) {
+    dlc = 8;  // VW T6 uses 8-byte messages
     clearDataBuffer(data, dlc);  // Initialize all bytes to 0
     
-    // Map our gear enum to VW T7's gear values
+    // Map our gear enum to VW T6's gear values (same as T7)
     uint8_t gear_value;
     switch (gear) {
         case Gear::PARK:     gear_value = 0x05; break;
@@ -33,25 +33,25 @@ void VWT7MessageGenerator::generateGearMessage(Gear gear, uint8_t* data, uint8_t
         default:            gear_value = 0x05; break; // Default to PARK
     }
     
-    // Set gear value in byte 5 (VW T7 format)
+    // Set gear value in byte 5 (VW T6 format)
     data[5] = gear_value;
     
-    ESP_LOGI(TAG, "Generated VW T7 gear message: %02X %02X %02X %02X %02X %02X %02X %02X", 
+    ESP_LOGI(TAG, "Generated VW T6 gear message: %02X %02X %02X %02X %02X %02X %02X %02X", 
              data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
 }
 
-std::vector<uint32_t> VWT7MessageGenerator::getRequiredMessageIds() const {
+std::vector<uint32_t> VWT6MessageGenerator::getRequiredMessageIds() const {
     return {GEAR_MSG_ID, SPEED_MSG_ID};
 }
 
-uint32_t VWT7MessageGenerator::getCANBaudRate() const {
+uint32_t VWT6MessageGenerator::getCANBaudRate() const {
     return CAN_BAUDRATE;
 }
 
-button_id_t VWT7MessageGenerator::getVehicleType() const {
-    return VW_T7;
+button_id_t VWT6MessageGenerator::getVehicleType() const {
+    return VW_T6;
 }
 
-const char* VWT7MessageGenerator::getVehicleName() const {
-    return "VW T7";
-} 
+const char* VWT6MessageGenerator::getVehicleName() const {
+    return "VW T6";
+}

@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "CarCanController.h"
+#include "MessageGeneratorFactory.h"
 #include "common.h"
 
 #define TAG "CarCan"
@@ -63,23 +64,37 @@ ButtonMap CarCanController::getButtonMap(){
     return button_map;
 }
 
+bool CarCanController::hasMessageGenerator() const {
+    return MessageGeneratorFactory::getInstance().isVehicleSupported(current_vehicle);
+}
+
+std::shared_ptr<BaseMessageGenerator> CarCanController::getCurrentMessageGenerator() const {
+    return MessageGeneratorFactory::getInstance().getMessageGenerator(current_vehicle);
+}
+
 void CarCanController::sendPeriodicMessages() {
-    if (!hasMessageGenerator()) return;
+    auto generator = getCurrentMessageGenerator();
+    if (!generator) {
+        ESP_LOGW(TAG, "No message generator available for vehicle %d", current_vehicle);
+        return;
+    }
 
     uint8_t data[8];
     uint8_t dlc;
 
-    // Send speed message
-    message_generator.generateSpeedMessage(current_vehicle, current_speed_kmh, data, dlc);
-    auto ids = message_generator.getRequiredMessageIds(current_vehicle);
-    if (ids.size() > 1) {
-        send_can_message(ids[1], data, dlc);  // Speed message ID
-    }
-
-    // Send gear message
-    message_generator.generateGearMessage(current_vehicle, current_gear, data, dlc);
+    // Get message IDs for this vehicle
+    auto ids = generator->getRequiredMessageIds();
+    
+    // Send gear message (first ID in the vector)
     if (!ids.empty()) {
-        send_can_message(ids[0], data, dlc);  // Gear message ID
+        generator->generateGearMessage(current_gear, data, dlc);
+        send_can_message(ids[0], data, dlc);
+    }
+    
+    // Send speed message (second ID in the vector)
+    if (ids.size() > 1) {
+        generator->generateSpeedMessage(current_speed_kmh, data, dlc);
+        send_can_message(ids[1], data, dlc);
     }
 }
 
@@ -100,11 +115,29 @@ void twai_task(void *pvParameter) {
     CarCanController* controller = static_cast<CarCanController*>(pvParameter);
     
     // Configure TWAI with baudrate from current vehicle
-    uint32_t baudrate = controller->hasMessageGenerator() ? 
-        controller->message_generator.getCANBaudRate(controller->getCurrentVehicle()) : 500000;
+    uint32_t baudrate = 500000; // Default baudrate
+    if (controller->hasMessageGenerator()) {
+        auto generator = controller->getCurrentMessageGenerator();
+        if (generator) {
+            baudrate = generator->getCANBaudRate();
+        }
+    }
     
     twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_20, GPIO_NUM_19, TWAI_MODE_NORMAL);
-    twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();  // TODO: Use baudrate parameter
+    
+    // Configure timing based on baudrate
+    twai_timing_config_t t_config;
+    if (baudrate == 500000) {
+        t_config = TWAI_TIMING_CONFIG_500KBITS();
+    } else if (baudrate == 250000) {
+        t_config = TWAI_TIMING_CONFIG_250KBITS();
+    } else if (baudrate == 125000) {
+        t_config = TWAI_TIMING_CONFIG_125KBITS();
+    } else {
+        ESP_LOGW(TAG, "Unsupported baudrate %lu, defaulting to 500kbps", baudrate);
+        t_config = TWAI_TIMING_CONFIG_500KBITS();
+    }
+    
     twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
     if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK) {
