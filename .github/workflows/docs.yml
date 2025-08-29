@@ -1,0 +1,149 @@
+name: Build and Release Documentation
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r docs/requirements.txt
+    
+    - name: Build Sphinx documentation
+      run: |
+        cd docs
+        make html
+        make latexpdf || echo "PDF build failed, continuing..."
+    
+    - name: Upload HTML documentation
+      uses: actions/upload-artifact@v4
+      with:
+        name: documentation-html
+        path: docs/_build/html/
+        retention-days: 30
+    
+    - name: Upload PDF documentation
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: documentation-pdf
+        path: docs/_build/latex/*.pdf
+        retention-days: 30
+    
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: docs/_build/html
+        force_orphan: true
+
+  create-release:
+    needs: build-docs
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Download HTML documentation
+      uses: actions/download-artifact@v4
+      with:
+        name: documentation-html
+        path: documentation-html
+    
+    - name: Download PDF documentation
+      uses: actions/download-artifact@v4
+      with:
+        name: documentation-pdf
+        path: documentation-pdf
+      continue-on-error: true
+    
+    - name: Create documentation archives
+      run: |
+        # Create HTML archive
+        cd documentation-html
+        zip -r ../esp32-can-controller-docs-html-${{ github.ref_name }}.zip .
+        cd ..
+        
+        # Create PDF archive if PDFs exist
+        if [ -d "documentation-pdf" ] && [ "$(ls -A documentation-pdf)" ]; then
+          cd documentation-pdf
+          zip -r ../esp32-can-controller-docs-pdf-${{ github.ref_name }}.zip *.pdf
+          cd ..
+        fi
+    
+    - name: Extract release notes
+      id: extract-release-notes
+      run: |
+        if [ -f "CHANGELOG.md" ]; then
+          # Extract notes between current and previous version
+          echo "RELEASE_NOTES<<EOF" >> $GITHUB_OUTPUT
+          sed -n "/## \[${{ github.ref_name }}\]/,/## \[/p" CHANGELOG.md | head -n -1 >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        else
+          echo "RELEASE_NOTES=Release ${{ github.ref_name }} of ESP32 CAN Bus Vehicle Controller with updated documentation." >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: ESP32 CAN Controller ${{ github.ref_name }}
+        body: |
+          # ESP32 CAN Bus Vehicle Controller ${{ github.ref_name }}
+          
+          ## 📚 Documentation
+          
+          Complete Sphinx documentation for the ESP32 CAN Bus Vehicle Controller project.
+          
+          ### What's Included:
+          - **Getting Started Guide**: Quick setup and installation
+          - **Hardware Setup**: Detailed wiring and component specifications  
+          - **Software Architecture**: System design and component relationships
+          - **API Reference**: Complete class and method documentation
+          - **Vehicle Support**: Supported vehicles and CAN protocols
+          - **Configuration Guide**: Build-time and runtime options
+          - **Build & Deployment**: Development environment setup
+          - **Troubleshooting**: Common issues and solutions
+          
+          ### 🌐 Online Documentation
+          View the documentation online at: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+          
+          ### 📁 Downloads
+          - **HTML Documentation**: Complete interactive documentation (recommended)
+          - **PDF Documentation**: Printable version for offline reference
+          
+          ### 🚀 Features in this Release
+          ${{ steps.extract-release-notes.outputs.RELEASE_NOTES }}
+          
+          ---
+          
+          **Supported Vehicles**: VW T5/T6/T6.1/T7, Mercedes Sprinter/Viano, Jeep Renegade  
+          **Platform**: ESP32-S3 with LVGL GUI and CAN bus integration  
+          **Hardware**: Waveshare RGB LCD display with touch support
+        files: |
+          esp32-can-controller-docs-html-${{ github.ref_name }}.zip
+          esp32-can-controller-docs-pdf-${{ github.ref_name }}.zip
+        draft: false
+        prerelease: false
+        generate_release_notes: true
