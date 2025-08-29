@@ -8,35 +8,39 @@ void VWT6MessageGenerator::generateSpeedMessage(uint8_t speed_kmh, uint8_t* data
     dlc = 8;  // VW T6 uses 8-byte messages
     clearDataBuffer(data, dlc);  // Initialize all bytes to 0
     
-    // Convert speed using the factor (0.01)
+    // Convert speed using the real T6 factor (0.005)
     uint16_t speed_value = static_cast<uint16_t>(speed_kmh / SPEED_FACTOR);
     
-    // Pack speed value into the message (VW T6 format - same as T7)
-    data[4] = speed_value & 0xFF;
-    data[5] = (speed_value >> 8) & 0xFF;
+    // Pack speed value into the message (VW T6 format - bytes 2-3, little endian)
+    data[2] = speed_value & 0xFF;        // Low byte
+    data[3] = (speed_value >> 8) & 0xFF; // High byte
     
-    ESP_LOGI(TAG, "Generated VW T6 speed message (%d km/h): %02X %02X %02X %02X %02X %02X %02X %02X", 
-             speed_kmh, data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
+    ESP_LOGI(TAG, "T6 Speed DEBUG: %d km/h -> raw_value: %d -> data[2]=0x%02X, data[3]=0x%02X", 
+             speed_kmh, speed_value, data[2], data[3]);
+    ESP_LOGI(TAG, "T6 Speed FULL: [%02X %02X %02X %02X %02X %02X %02X %02X]", 
+             data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
 }
 
 void VWT6MessageGenerator::generateGearMessage(Gear gear, uint8_t* data, uint8_t& dlc) {
     dlc = 8;  // VW T6 uses 8-byte messages
     clearDataBuffer(data, dlc);  // Initialize all bytes to 0
     
-    // Map our gear enum to VW T6's gear values (same as T7)
+    // Map our gear enum to real VW T6 gear values (from parser implementation)
     uint8_t gear_value;
     switch (gear) {
-        case Gear::PARK:     gear_value = 0x05; break;
-        case Gear::REVERSE:  gear_value = 0x04; break;
-        case Gear::NEUTRAL:  gear_value = 0x03; break;
-        case Gear::DRIVE:    gear_value = 0x02; break;
-        default:            gear_value = 0x05; break; // Default to PARK
+        case Gear::PARK:     gear_value = 0x80; break; // Real T6 Park value
+        case Gear::REVERSE:  gear_value = 0x77; break; // Real T6 Reverse value (engine on)
+        case Gear::NEUTRAL:  gear_value = 0x60; break; // Real T6 Neutral value
+        case Gear::DRIVE:    gear_value = 0x50; break; // Real T6 Drive value
+        default:            gear_value = 0x80; break; // Default to PARK
     }
     
-    // Set gear value in byte 5 (VW T6 format)
-    data[5] = gear_value;
+    // Set gear value in byte 1 (VW T6 format - from parser)
+    data[1] = gear_value;
     
-    ESP_LOGI(TAG, "Generated VW T6 gear message: %02X %02X %02X %02X %02X %02X %02X %02X", 
+    ESP_LOGI(TAG, "T6 Gear DEBUG: %d -> gear_value: 0x%02X -> data[1]=0x%02X", 
+             static_cast<int>(gear), gear_value, data[1]);
+    ESP_LOGI(TAG, "T6 Gear FULL: [%02X %02X %02X %02X %02X %02X %02X %02X]", 
              data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
 }
 

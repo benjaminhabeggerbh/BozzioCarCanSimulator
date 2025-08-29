@@ -16,7 +16,7 @@ void twai_task(void *pvParameter);
 void twai_receive_task(void *pvParameter);
 void send_can_message(uint32_t message_id, uint8_t* data, uint8_t dlc);
 
-CarCanController::CarCanController() : current_vehicle(VW_T7), current_speed_kmh(0), current_gear(Gear::PARK) {
+CarCanController::CarCanController() : current_vehicle(VW_T6), current_speed_kmh(0), current_gear(Gear::PARK) {
     button_map = {
         { VW_T5,             {"VW T5"} },        
         { VW_T6,             {"VW T6"} },
@@ -44,6 +44,9 @@ void CarCanController::setCurrentVehicle(button_id_t vehicle) {
     if (button_map.find(vehicle) != button_map.end()) {
         current_vehicle = vehicle;
         ESP_LOGI(TAG, "Selected vehicle: %s", button_map[vehicle].label);
+        
+        // Reconfigure CAN controller with new vehicle's baud rate
+        reconfigureCANController();
     }
 }
 
@@ -70,6 +73,62 @@ bool CarCanController::hasMessageGenerator() const {
 
 std::shared_ptr<BaseMessageGenerator> CarCanController::getCurrentMessageGenerator() const {
     return MessageGeneratorFactory::getInstance().getMessageGenerator(current_vehicle);
+}
+
+void CarCanController::reconfigureCANController() {
+    ESP_LOGI(TAG, "Reconfiguring CAN controller for vehicle change...");
+    
+    // Stop current CAN driver
+    esp_err_t stop_result = twai_stop();
+    ESP_LOGI(TAG, "TWAI stop result: 0x%x", stop_result);
+    
+    esp_err_t uninstall_result = twai_driver_uninstall();
+    ESP_LOGI(TAG, "TWAI uninstall result: 0x%x", uninstall_result);
+    
+    // Get new baud rate from current vehicle
+    uint32_t baudrate = 500000; // Default baudrate
+    if (hasMessageGenerator()) {
+        auto generator = getCurrentMessageGenerator();
+        if (generator) {
+            baudrate = generator->getCANBaudRate();
+        }
+    }
+    
+    ESP_LOGI(TAG, "Configuring CAN for %lu baud", baudrate);
+    ESP_LOGI(TAG, "*** RECONFIG MODE: NORMAL (production) ***");
+    
+    // Reconfigure with new baud rate
+    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_20, GPIO_NUM_19, TWAI_MODE_NORMAL);
+    
+    // Configure timing based on baudrate
+    twai_timing_config_t t_config;
+    if (baudrate == 500000) {
+        t_config = TWAI_TIMING_CONFIG_500KBITS();
+        ESP_LOGI(TAG, "Using TWAI_TIMING_CONFIG_500KBITS()");
+    } else if (baudrate == 250000) {
+        t_config = TWAI_TIMING_CONFIG_250KBITS();
+        ESP_LOGI(TAG, "Using TWAI_TIMING_CONFIG_250KBITS()");
+    } else if (baudrate == 125000) {
+        t_config = TWAI_TIMING_CONFIG_125KBITS();
+        ESP_LOGI(TAG, "Using TWAI_TIMING_CONFIG_125KBITS()");
+    } else {
+        ESP_LOGW(TAG, "Unsupported baudrate %lu, defaulting to 500kbps", baudrate);
+        t_config = TWAI_TIMING_CONFIG_500KBITS();
+        ESP_LOGI(TAG, "Using TWAI_TIMING_CONFIG_500KBITS() (default)");
+    }
+    
+    twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
+    if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK) {
+        ESP_LOGI(TAG, "TWAI driver reconfigured successfully");
+        if (twai_start() == ESP_OK) {
+            ESP_LOGI(TAG, "TWAI started successfully");
+        } else {
+            ESP_LOGE(TAG, "Failed to start TWAI");
+        }
+    } else {
+        ESP_LOGE(TAG, "Failed to reinstall TWAI driver");
+    }
 }
 
 void CarCanController::sendPeriodicMessages() {
@@ -106,8 +165,11 @@ void send_can_message(uint32_t message_id, uint8_t* data, uint8_t dlc)
     message.data_length_code = dlc;
     memcpy(message.data, data, dlc);
 
-    if (twai_transmit(&message, pdMS_TO_TICKS(1000)) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to send CAN message!");
+    esp_err_t result = twai_transmit(&message, pdMS_TO_TICKS(1000));
+    if (result != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to send CAN message! ID=0x%03lX, Error=0x%x", message_id, result);
+    } else {
+        ESP_LOGD(TAG, "CAN message sent successfully: ID=0x%03lX", message_id);
     }
 }
 
@@ -123,19 +185,26 @@ void twai_task(void *pvParameter) {
         }
     }
     
+    ESP_LOGI(TAG, "Initial CAN configuration: %lu baud", baudrate);
+    ESP_LOGI(TAG, "*** INITIAL MODE: NORMAL (production) ***");
+    
     twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_20, GPIO_NUM_19, TWAI_MODE_NORMAL);
     
     // Configure timing based on baudrate
     twai_timing_config_t t_config;
     if (baudrate == 500000) {
         t_config = TWAI_TIMING_CONFIG_500KBITS();
+        ESP_LOGI(TAG, "Initial: Using TWAI_TIMING_CONFIG_500KBITS()");
     } else if (baudrate == 250000) {
         t_config = TWAI_TIMING_CONFIG_250KBITS();
+        ESP_LOGI(TAG, "Initial: Using TWAI_TIMING_CONFIG_250KBITS()");
     } else if (baudrate == 125000) {
         t_config = TWAI_TIMING_CONFIG_125KBITS();
+        ESP_LOGI(TAG, "Initial: Using TWAI_TIMING_CONFIG_125KBITS()");
     } else {
         ESP_LOGW(TAG, "Unsupported baudrate %lu, defaulting to 500kbps", baudrate);
         t_config = TWAI_TIMING_CONFIG_500KBITS();
+        ESP_LOGI(TAG, "Initial: Using TWAI_TIMING_CONFIG_500KBITS() (default)");
     }
     
     twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
@@ -173,7 +242,7 @@ void twai_receive_task(void *pvParameter) {
         if (twai_receive(&message, pdMS_TO_TICKS(1000)) == ESP_OK) {
             // Message received, but we don't need to process it
         } else {
-            ESP_LOGW(TAG, "No message received within timeout.");
+            // Timeout warnings removed for cleaner interface
         }
     }
 } 

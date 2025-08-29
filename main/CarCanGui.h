@@ -11,6 +11,12 @@ class CarCanGui {
 public:
     CarCanGui(CarCanController& controller);
     void createGui();
+    
+    // Methods to update GUI elements programmatically (for serial commands)
+    void updateVehicleSelection();
+    void updateSpeedDisplay();
+    void updateGearSelection();
+    void updateAllElements();
 
 private:
     lv_obj_t *container;

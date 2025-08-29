@@ -38,6 +38,9 @@ private:
     uint8_t current_speed_kmh;
     Gear current_gear;
     
+    // CAN controller management
+    void reconfigureCANController();
+    
 };
 
 #endif // CAR_CAN_CONTROLLER_H 

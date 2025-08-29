@@ -136,4 +136,56 @@ void CarCanGui::gear_event_handler(lv_event_t * e) {
         // Update controller
         self->controller.setGear(static_cast<Gear>(gear_index));
     }
+}
+
+// Methods to update GUI elements programmatically
+void CarCanGui::updateVehicleSelection() {
+    if (!dropdown) return;
+    
+    button_id_t current = controller.getCurrentVehicle();
+    int index = 0;
+    for (const auto& item : button_map) {
+        if (item.first == current) {
+            lv_dropdown_set_selected(dropdown, index);
+            break;
+        }
+        index++;
+    }
+}
+
+void CarCanGui::updateSpeedDisplay() {
+    if (!speed_slider || !speed_label) return;
+    
+    uint8_t current_speed = controller.getSpeed();
+    
+    // Update slider value
+    lv_slider_set_value(speed_slider, current_speed, LV_ANIM_OFF);
+    
+    // Update label
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d km/h", current_speed);
+    lv_label_set_text(speed_label, buf);
+}
+
+void CarCanGui::updateGearSelection() {
+    if (!gear_buttons[0]) return;  // Check if gear buttons are created
+    
+    Gear current_gear = controller.getGear();
+    
+    // Clear all gear button states
+    for (int i = 0; i < 4; i++) {
+        lv_obj_clear_state(gear_buttons[i], LV_STATE_CHECKED);
+    }
+    
+    // Set the current gear button as checked
+    int gear_index = static_cast<int>(current_gear);
+    if (gear_index >= 0 && gear_index < 4) {
+        lv_obj_add_state(gear_buttons[gear_index], LV_STATE_CHECKED);
+    }
+}
+
+void CarCanGui::updateAllElements() {
+    updateVehicleSelection();
+    updateSpeedDisplay();
+    updateGearSelection();
 } 

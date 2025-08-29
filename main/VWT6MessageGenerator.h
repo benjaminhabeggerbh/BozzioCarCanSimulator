@@ -19,11 +19,11 @@ public:
     const char* getVehicleName() const override;
 
 private:
-    // VW T6 specific constants (different from T7)
-    static constexpr uint32_t SPEED_MSG_ID = 0x1FD;
-    static constexpr uint32_t GEAR_MSG_ID = 0x3DD;
-    static constexpr uint32_t CAN_BAUDRATE = 500000;
-    static constexpr float SPEED_FACTOR = 0.01f;
+    // VW T6 specific constants (from real parser implementation)
+    static constexpr uint32_t SPEED_MSG_ID = 0x01A0;  // Real VW T6 speed CAN ID
+    static constexpr uint32_t GEAR_MSG_ID = 0x0440;   // Real VW T6 gear CAN ID
+    static constexpr uint32_t CAN_BAUDRATE = 500000;  // 500k baud rate
+    static constexpr float SPEED_FACTOR = 0.005f;     // Real VW T6 speed factor
 };
 
 #endif // VWT6_MESSAGE_GENERATOR_H

@@ -15,8 +15,7 @@ void VWT7MessageGenerator::generateSpeedMessage(uint8_t speed_kmh, uint8_t* data
     data[4] = speed_value & 0xFF;
     data[5] = (speed_value >> 8) & 0xFF;
     
-    ESP_LOGI(TAG, "Generated VW T7 speed message (%d km/h): %02X %02X %02X %02X %02X %02X %02X %02X", 
-             speed_kmh, data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
+    // Debug output removed for cleaner interface
 }
 
 void VWT7MessageGenerator::generateGearMessage(Gear gear, uint8_t* data, uint8_t& dlc) {
@@ -36,8 +35,7 @@ void VWT7MessageGenerator::generateGearMessage(Gear gear, uint8_t* data, uint8_t
     // Set gear value in byte 5 (VW T7 format)
     data[5] = gear_value;
     
-    ESP_LOGI(TAG, "Generated VW T7 gear message: %02X %02X %02X %02X %02X %02X %02X %02X", 
-             data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
+        // Debug output removed for cleaner interface
 }
 
 std::vector<uint32_t> VWT7MessageGenerator::getRequiredMessageIds() const {
